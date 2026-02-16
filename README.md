@@ -5,6 +5,7 @@ https://github.com/PrincetonUniversity/Vatic/actions/workflows/ci.yml)
 
 > [!IMPORTANT]
 > **License Notice**
+>
 > This software is made available for academic and research purposes only under a license from Princeton University.
 > Commercial use is prohibited without a separate license agreement.
 > For commercial use licensing inquiries, contact: rmukerji@loudonenergy.com
