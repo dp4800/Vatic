@@ -252,8 +252,18 @@ class PickleProvider:
                                               generator_type='thermal'):
             g_data['initial_status'] = use_state.get_initial_generator_state(
                 gen)
-            g_data['initial_p_output'] = use_state.get_initial_power_generated(
-                gen)
+            p0 = use_state.get_initial_power_generated(gen)
+            # Clamp to PMax + one ramp-down step to avoid Pyomo validation
+            # failures when LP transmission violations cause over-dispatch.
+            raw_pmax = g_data.get('p_max', p0)
+            if isinstance(raw_pmax, dict):
+                # time-series p_max: use max value across horizon
+                p_max = max(raw_pmax.get('values', [p0]))
+            else:
+                p_max = float(raw_pmax)
+            ramp_dn = float(g_data.get('ramp_down_60min',
+                                       g_data.get('ramp_up_60min', p_max)))
+            g_data['initial_p_output'] = min(p0, p_max + ramp_dn)
 
         # copy over energy storage initial states
         for store, store_data in new_model.elements('storage'):
@@ -768,7 +778,8 @@ class PickleProvider:
                          'load': loads, 'branch': branches,
                          'generator': generators,
 
-                         'interface': dict(), 'zone': dict(), 'storage': dict()
+                         'interface': dict(), 'zone': dict(),
+                         'storage': self._create_storage_model_dict(data)
                          }
             }
 
@@ -913,3 +924,9 @@ class PickleProvider:
                                           'values': pmax_vals}
 
         return gen_dict
+
+    def _create_storage_model_dict(self, data: dict) -> dict:
+        return {
+            uid: dict(attrs)
+            for uid, attrs in data.get('StorageGenerators', {}).items()
+        }

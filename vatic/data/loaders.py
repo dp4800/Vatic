@@ -39,21 +39,34 @@ _ROOT = os.path.abspath(os.path.dirname(__file__))
 
 def load_input(
         grid: str, start_date: str | pd.Timestamp, num_days: int,
-        init_state_file: Optional[str | Path]
+        init_state_file: Optional[str | Path],
+        thermal_rating_scale: float = 1.0
         ) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
     """Uses a label to retrieve the input datasets for a given grid system."""
 
-    if grid == 'RTS-GMLC':
-        use_loader = RtsLoader(init_state_file)
-
-    elif grid == 'Texas-7k':
-        use_loader = T7kLoader(init_state_file)
-
-    elif grid == 'Texas-7k_2030':
-        use_loader = T7k2030Loader(init_state_file)
-
+    # Longer prefixes must be checked first (Texas-7k_2030 before Texas-7k).
+    if grid.startswith('Texas-7k_2030'):
+        base_cls = T7k2030Loader
+    elif grid.startswith('Texas-7k'):
+        base_cls = T7kLoader
+    elif grid.startswith('RTS-GMLC'):
+        base_cls = RtsLoader
     else:
         raise ValueError(f"Unsupported grid `{grid}`!")
+
+    # If the name matches the base class exactly, use it directly; otherwise
+    # build a thin subclass so that data paths resolve to the right directory.
+    if grid == base_cls.grid_lbl:
+        use_loader = base_cls(init_state_file,
+                              thermal_rating_scale=thermal_rating_scale)
+    else:
+        _fake = object.__new__(base_cls)
+        _base_init_path = base_cls.init_state_file.fget(_fake)
+        derived = type(f'_{grid}_Loader', (base_cls,),
+                       {'grid_lbl': grid,
+                        'init_state_file': property(lambda self, p=_base_init_path: p)})
+        use_loader = derived(init_state_file,
+                             thermal_rating_scale=thermal_rating_scale)
 
     start_date = pd.Timestamp(start_date, tz='utc')
     end_date = start_date + pd.Timedelta(days=num_days)
@@ -159,7 +172,8 @@ class GridLoader(ABC):
 
     def __init__(self,
                  init_state_file: str | Path | None = None,
-                 mins_per_time_period: int = 60) -> None:
+                 mins_per_time_period: int = 60,
+                 thermal_rating_scale: float = 1.0) -> None:
         """Create the static characteristics of the grid.
 
         Initializing a grid loader entails parsing the grid metadata to get the
@@ -225,6 +239,7 @@ class GridLoader(ABC):
 
         """
         self.mins_per_time_period = mins_per_time_period
+        self.thermal_rating_scale = thermal_rating_scale
 
         # read in metadata about static grid elements from file, clean data
         # where necessary, and parse grid elements to get key properties
@@ -272,7 +287,8 @@ class GridLoader(ABC):
             'BusTo': {branch.ID: bus_name_mapping[branch.ToBus]
                       for branch in self.branches},
 
-            'ThermalLimit': {branch.ID: round(branch.ContRating, 8)
+            'ThermalLimit': {branch.ID: round(
+                                branch.ContRating * self.thermal_rating_scale, 8)
                              for branch in self.branches},
             'Impedence': {branch.ID: round(branch.X, 8)
                           for branch in self.branches},
@@ -295,14 +311,16 @@ class GridLoader(ABC):
             init_states = first_states
 
         for gen in self.generators:
-            if gen.ID in first_states:
-                if gen.Fuel in self.thermal_gen_types:
-                    tgens += [gen]
-                    tgen_bus_map[bus_name_mapping[gen.Bus]] += [gen.ID]
+            if gen.Fuel in self.thermal_gen_types and gen.ID in first_states:
+                tgens += [gen]
+                tgen_bus_map[bus_name_mapping[gen.Bus]] += [gen.ID]
 
-                if gen.Fuel in self.renew_gen_types and gen:
-                    rgens += [gen]
-                    rgen_bus_map[bus_name_mapping[gen.Bus]] += [gen.ID]
+            # Renewables do not need an initial commitment state entry, so
+            # include them regardless of whether they appear in first_states.
+            # This allows dynamically-added _INV generators to be recognised.
+            if gen.Fuel in self.renew_gen_types and gen:
+                rgens += [gen]
+                rgen_bus_map[bus_name_mapping[gen.Bus]] += [gen.ID]
 
         template.update({
             'ThermalGenerators': [gen.ID for gen in tgens],
@@ -417,6 +435,64 @@ class GridLoader(ABC):
                      else round(init_states[gen.ID]['PowerGeneratedT0'], 2))
             for gen in tgens if gen.ID in init_states
             }
+
+        # --- storage units ---
+        storage_path = Path(self.data_path, "SourceData", "storage.csv")
+        try:
+            storage_csv = pd.read_csv(storage_path)
+        except FileNotFoundError:
+            storage_csv = pd.DataFrame(
+                columns=['GEN UID', 'Max Volume GWh',
+                         'Initial Volume GWh', 'position'])
+
+        storage_gen_dict = {}
+        for _, row in self.gen_df[self.gen_df['Fuel'] == 'Storage'].iterrows():
+            gen_id   = row['GEN UID']
+            bus_id   = int(row['Bus ID'])
+            bus_name = bus_name_mapping.get(bus_id, str(bus_id))
+            pmax     = float(row['PMax MW'])
+            pump_mw  = float(row.get('Pump Load MW', pmax))
+            ramp_mwh = (float(row['Ramp Rate MW/Min']) * mins_per_time_period
+                        if float(row['Ramp Rate MW/Min']) > 0 else pmax)
+            rte_frac = float(row.get('Storage Roundtrip Efficiency', 85)) / 100.0
+            eff      = rte_frac ** 0.5
+
+            head = storage_csv[(storage_csv['GEN UID'] == gen_id) &
+                               (storage_csv['position'] == 'head')]
+            if not head.empty:
+                max_vol  = float(head.iloc[0]['Max Volume GWh'])
+                init_vol = float(head.iloc[0]['Initial Volume GWh'])
+                energy_mwh = max_vol * 1000.0
+                init_soc   = (init_vol / max_vol) if max_vol > 0 else 0.5
+            else:
+                # No storage.csv entry — default to 4-hour battery
+                # (NREL ATB 2024 Moderate: $1,201/kW in 2022$ aligns with 4-hour
+                # Li-ion; Cole & Karmakar 2023, NREL/TP-6A20-85332)
+                energy_mwh = pmax * 4.0
+                init_soc   = 0.5
+
+            storage_gen_dict[gen_id] = {
+                'bus':                     bus_name,
+                'min_discharge_rate':      0.0,
+                'max_discharge_rate':      pmax,
+                'min_charge_rate':         0.0,
+                'max_charge_rate':         pump_mw,
+                'ramp_up_output_60min':    ramp_mwh,
+                'ramp_down_output_60min':  ramp_mwh,
+                'ramp_up_input_60min':     ramp_mwh,
+                'ramp_down_input_60min':   ramp_mwh,
+                'energy_capacity':         energy_mwh,
+                'minimum_state_of_charge': 0.0,
+                'charge_efficiency':       eff,
+                'discharge_efficienty':    eff,   # note: typo in params.py
+                'retention_rate_60min':    1.0,
+                'charge_cost':             0.0,
+                'discharge_cost':          0.0,
+                'initial_discharge_rate':  0.0,
+                'initial_charge_rate':     0.0,
+                'initial_state_of_charge': init_soc,
+            }
+        template['StorageGenerators'] = storage_gen_dict
 
         self.template = template
 
@@ -567,7 +643,7 @@ class GridLoader(ABC):
 
         if load_actls is None:
             load_actls = self.get_actuals(
-                'Load', start_date, end_date).resample('H').mean()
+                'Load', start_date, end_date).resample('h').mean()
 
         site_dfs = dict()
         for zone, zone_df in self.bus_df.groupby('Area'):
@@ -584,7 +660,26 @@ class GridLoader(ABC):
                     [(x, bus_name) for x in site_df.columns])
                 site_dfs[bus_name] = site_df
 
-        return pd.concat(site_dfs.values(), axis=1).sort_index(axis=1)
+        result = pd.concat(site_dfs.values(), axis=1).sort_index(axis=1)
+        # --- Bus-level load injections (added by add_datacenter_load.py) ---
+        inject_dir = Path(self.data_path, 'timeseries_data_files', 'BusInjections')
+        if inject_dir.is_dir():
+            try:
+                inj_fcsts = self.get_forecasts('BusInjections', start_date, end_date)
+                inj_actls = self.get_actuals(
+                    'BusInjections', start_date, end_date).resample('h').mean()
+            except (AssertionError, FileNotFoundError, KeyError, StopIteration):
+                inj_fcsts, inj_actls = None, None
+            if inj_fcsts is not None:
+                for _bus in inj_fcsts.columns:
+                    if ('fcst', _bus) in result.columns:
+                        result[('fcst', _bus)] = result[('fcst', _bus)] + inj_fcsts[_bus]
+            if inj_actls is not None:
+                for _bus in inj_actls.columns:
+                    if ('actl', _bus) in result.columns:
+                        result[('actl', _bus)] = result[('actl', _bus)] + inj_actls[_bus]
+        # --- end bus-level injections ---
+        return result
 
     @classmethod
     @abstractmethod
@@ -629,7 +724,7 @@ class GridLoader(ABC):
         for asset_type in self.timeseries_cohorts:
             gen_fcsts = self.get_forecasts(asset_type, start_date, end_date)
             gen_actls = self.get_actuals(
-                asset_type, start_date, end_date).resample('H').mean()
+                asset_type, start_date, end_date).resample('h').mean()
 
             gen_fcsts.columns = pd.MultiIndex.from_tuples(
                 [('fcst', asset_name) for asset_name in gen_fcsts.columns])
@@ -715,9 +810,9 @@ class GridLoader(ABC):
 
         for asset_type in self.no_scenario_renews:
             new_actuals = self.get_actuals(
-                asset_type, start_date, end_date).resample('H').mean()
+                asset_type, start_date, end_date).resample('h').mean()
 
-            for asset_name, asset_actuals in new_actuals.iteritems():
+            for asset_name, asset_actuals in new_actuals.items():
                 gen_df['actl', asset_name] = asset_actuals
 
         #TODO: investigate cases where forecasts are missing for assets
@@ -1147,3 +1242,5 @@ class T7k2030Loader(T7kLoader):
                     )
 
         return pd.concat(mapped_vals, axis=1)
+
+

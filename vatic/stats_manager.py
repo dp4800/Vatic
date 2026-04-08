@@ -322,6 +322,20 @@ class StatsManager:
                 ]).drop('Minute', axis=1).set_index(
                 ['Date', 'Hour', 'Generator'], verify_integrity=True)
 
+            # Storage charge/discharge/SOC — only written when storage units exist
+            if any(stats['storage_input_dispatch_levels']
+                   for _, stats in self._sced_stats.items()):
+                report_dfs['storage_detail'] = pd.DataFrame.from_records([
+                    {**time_step.labels(),
+                     **{'Generator': store,
+                        'Charge':    stats['storage_input_dispatch_levels'][store],
+                        'Discharge': stats['storage_output_dispatch_levels'][store],
+                        'SOC':       stats['storage_soc_dispatch_levels'][store]}}
+                    for time_step, stats in self._sced_stats.items()
+                    for store in stats['storage_input_dispatch_levels']
+                    ]).drop('Minute', axis=1).set_index(
+                    ['Date', 'Hour', 'Generator'], verify_integrity=True)
+
         # very bulky output files
         if self.output_detail > 1:
             report_dfs['daily_commits'] = pd.DataFrame.from_records([

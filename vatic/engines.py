@@ -421,10 +421,6 @@ class Simulator:
         except:
             print("Failed to solve deterministic RUC instance - likely "
                   "because no feasible solution exists!")
-
-            output_filename = "bad_ruc.json"
-            ruc_model_data.write(output_filename)
-            print("Wrote failed RUC model to file=" + output_filename)
             raise
 
         self._ptdf_manager.update_active(ruc_plan)
@@ -594,8 +590,13 @@ class Simulator:
         #       beyond (to avoid end-of-horizon effects).
         #       But for now we run for 24 hours.
         proj_hours = min(24, self._simulation_state.timestep_count)
-        proj_sced_instance = self.solve_sced(hours_in_objective=proj_hours,
-                                             sced_horizon=proj_hours)
+        try:
+            proj_sced_instance = self.solve_sced(hours_in_objective=proj_hours,
+                                                 sced_horizon=proj_hours)
+        except Exception as e:
+            print(f"WARNING: Projected SCED infeasible ({e}); "
+                  f"falling back to current state for RUC initialization.")
+            return self._simulation_state
 
         return VaticStateWithScedOffset(self._simulation_state,
                                         proj_sced_instance,

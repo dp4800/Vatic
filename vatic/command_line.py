@@ -158,9 +158,17 @@ def run_deterministic():
                         help="how much info to print about the ongoing state "
                              "of the simulator and its solvers")
 
+    parser.add_argument("--thermal-rating-scale", type=float, default=1.0,
+                        dest="thermal_rating_scale",
+                        help="Scale factor applied to all line Cont Rating "
+                             "thermal limits (default 1.0 = no change). "
+                             "Use e.g. 1.15 to relax N-1 contingency limits "
+                             "to approximate normal operating ratings.")
+
     args = parser.parse_args()
     template_data, gen_data, load_data = load_input(
-        args.input_grid, args.start_date, args.num_days, args.init_conds_file)
+        args.input_grid, args.start_date, args.num_days, args.init_conds_file,
+        thermal_rating_scale=args.thermal_rating_scale)
 
     # output is placed in this code repo directory if output path is not given
     if args.out_dir:

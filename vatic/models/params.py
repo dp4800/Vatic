@@ -1016,7 +1016,7 @@ def load_base_params(
 
     # while startup costs must be monotonically non-decreasing!
     def validate_startup_costs_rule(m, g):
-       startup_costs = m.StartupCosts[g]
+       startup_costs = list(m.StartupCosts[g])
 
        for i in range(1, len(startup_costs) - 1):
            if startup_costs[i] > startup_costs[i + 1]:
