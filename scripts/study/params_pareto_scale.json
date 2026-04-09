@@ -1,0 +1,44 @@
+{
+  "grid": {
+    "base_grid": "Texas-7k",
+    "dc_grid":   "Texas-7k-DC-REAL",
+    "dc_buses_mode": "from_grid",
+    "dc_buses":  [],
+    "amplitude_mw":  0.0,
+    "variation":     0.08,
+    "period_hours":  24.0,
+    "phase_hours":   4.0
+  },
+  "simulation": {
+    "solver":               "gurobi",
+    "gurobi_module":        "gurobi/10.0.1",
+    "solver_args":          "Cuts=1 Presolve=1 Heuristics=0.03",
+    "threads":              4,
+    "ruc_horizon":          48,
+    "sced_horizon":         4,
+    "ruc_mipgap":           0.01,
+    "reserve_factor":       0.05,
+    "output_detail":        2,
+    "days":                 7,
+    "thermal_rating_scale": 2.0
+  },
+  "capex": {
+    "wind_per_mw":              1400000.0,
+    "solar_per_mw":             1100000.0,
+    "battery_per_mw":           1200000.0,
+    "wind_om_per_mw_yr":          29000.0,
+    "solar_om_per_mw_yr":         17000.0,
+    "battery_om_per_mw_yr":       10000.0,
+    "discount_rate":                 0.07,
+    "wind_life_yr":                    25,
+    "solar_life_yr":                   25,
+    "battery_life_yr":                 15
+  },
+  "lp_alpha": 0.5,
+  "flexible_ratio": 0.30,
+  "multi_week_dates": [
+    ["2018-01-07", "outputs/TX_2018_ANNUAL/2018-01-07/sim-lp"],
+    ["2018-07-15", "outputs/TX_2018_ANNUAL/2018-07-15/sim-lp"]
+  ],
+  "out_root": "outputs/TX_PARETO_SCALE"
+}

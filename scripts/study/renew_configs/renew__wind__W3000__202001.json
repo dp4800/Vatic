@@ -1,0 +1,74 @@
+{
+  "grid": {
+    "base_grid": "RTS-GMLC-DC-15PCT",
+    "dc_grid": "RTS-GMLC-DC-15PCT-RENEW-W3000",
+    "dc_buses": [
+      "Abel",
+      "Adler",
+      "Attar",
+      "Attlee",
+      "Bach",
+      "Balzac",
+      "Beethoven",
+      "Cabell",
+      "Caesar",
+      "Clark"
+    ],
+    "amplitude_mw": 57.1,
+    "variation": 0.05,
+    "period_hours": 24.0,
+    "phase_hours": 0.0
+  },
+  "simulation": {
+    "solver": "gurobi",
+    "gurobi_module": "gurobi/10.0.1",
+    "solver_args": "Cuts=1 Presolve=1 Heuristics=0.03",
+    "threads": 8,
+    "ruc_horizon": 48,
+    "sced_horizon": 4,
+    "ruc_mipgap": 0.01,
+    "reserve_factor": 0.05,
+    "output_detail": 2,
+    "date": "2020-01-01",
+    "days": 31
+  },
+  "cas": {
+    "extra_capacity_pct": 30,
+    "flexible_ratio_pct": 30,
+    "renew_fraction": 0.1,
+    "lp_alpha": 0.5,
+    "lp_alpha_steps": 3,
+    "deferral_window_hours": 12,
+    "lp_mode": "joint",
+    "headroom_pct": 30,
+    "run_247": false
+  },
+  "qp": {
+    "enabled": false,
+    "perturb_scale": 1.05
+  },
+  "renew_opt": {
+    "enabled": false,
+    "apply_best": false
+  },
+  "cas_iter": {
+    "max_iter": 1,
+    "tol_co2_pct": 0.5
+  },
+  "sim_lp_iter": {
+    "mode": "single",
+    "max_iterations": 1
+  },
+  "joint_lp_iter": {
+    "max_iter": 2,
+    "tol": 0.5
+  },
+  "analytics": {
+    "ncs_enabled": false,
+    "ncs_K": 16,
+    "ncs_scenarios": 100,
+    "carbon_weight": 0.5,
+    "water_weight": 0.5
+  },
+  "out_root": "outputs/RENEW_STUDY_RTS_2020/wind/W3000/2020-01-01"
+}

@@ -1,0 +1,64 @@
+{
+  "grid": {
+    "base_grid": "Texas-7k",
+    "dc_grid": "Texas-7k-DC-REAL",
+    "dc_buses_mode": "from_grid",
+    "dc_buses": [],
+    "amplitude_mw": 0.0,
+    "variation": 0.08,
+    "period_hours": 24.0,
+    "phase_hours": 4.0
+  },
+  "simulation": {
+    "solver": "gurobi",
+    "gurobi_module": "gurobi/10.0.1",
+    "solver_args": "Cuts=1 Presolve=1 Heuristics=0.03",
+    "threads": 8,
+    "ruc_horizon": 48,
+    "sced_horizon": 4,
+    "ruc_mipgap": 0.01,
+    "reserve_factor": 0.05,
+    "output_detail": 2,
+    "date": "2018-04-01",
+    "days": 7
+  },
+  "cas": {
+    "extra_capacity_pct": 30,
+    "flexible_ratio_pct": 20,
+    "renew_fraction": 0.1,
+    "lp_alpha": 1.0,
+    "lp_alpha_steps": 3,
+    "deferral_window_hours": 4,
+    "lp_mode": "joint",
+    "headroom_pct": 30,
+    "run_247": false,
+    "ptdf_threshold": 0.005
+  },
+  "qp": {
+    "enabled": false,
+    "perturb_scale": 1.05
+  },
+  "renew_opt": {
+    "enabled": false,
+    "apply_best": false
+  },
+  "cas_iter": {
+    "max_iter": 1,
+    "tol_co2_pct": 0.5
+  },
+  "sim_lp_iter": {
+    "mode": "single",
+    "max_iterations": 1
+  },
+  "joint_lp_iter": {
+    "max_iter": 2,
+    "tol": 0.5
+  },
+  "analytics": {
+    "ncs_enabled": false,
+    "carbon_weight": 0.5,
+    "water_weight": 0.5
+  },
+  "out_root": "outputs/TX_2018_ANNUAL",
+  "cas_lp_tag": "axdf-alpha_1.00-deferral_4h-flex_20pct"
+}
